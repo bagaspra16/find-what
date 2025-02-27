@@ -4,12 +4,12 @@
 FIND WHAT is an OSINT (Open Source Intelligence) search tool designed for investigation and information gathering. This tool utilizes Google search to find relevant web pages, extracts metadata, and provides interactive options for users to analyze the search results efficiently.
 
 ## Features 🚀
-✅ Advanced Google Search – Perform Google searches with a specified number of results 📊
-✅ Auto-Open Links – Automatically open search results in the browser 🌍
-✅ Metadata Extraction – Extract titles and descriptions from web pages 🔍
-✅ Save Search Results – Store results in a text file for later analysis 📝
-✅ Interactive Mode – Choose which links to open with an easy-to-use interface 🎯
-✅ Formatted Output – Display results with colors and icons for better readability 🎨
+- ✅ Advanced Google Search – Perform Google searches with a specified number of results 📊
+- ✅ Auto-Open Links – Automatically open search results in the browser 🌍
+- ✅ Metadata Extraction – Extract titles and descriptions from web pages 🔍
+- ✅ Save Search Results – Store results in a text file for later analysis 📝
+- ✅ Interactive Mode – Choose which links to open with an easy-to-use interface 🎯
+- ✅ Formatted Output – Display results with colors and icons for better readability 🎨
 
 ## Requirements
 Before running the script, ensure you have the following dependencies installed:
