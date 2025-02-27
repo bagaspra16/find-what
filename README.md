@@ -23,8 +23,7 @@ Before running the script, ensure you have the following dependencies installed:
 ## Installation
 1. Clone the repository or download the script:
    ```bash
-   git clone https://github.com/your-repo/find-what.git
-   cd find-what
+   git clone https://github.com/bagaspra16/find-what.git
    ```
 
 ## Usage
