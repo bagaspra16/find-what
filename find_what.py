@@ -220,7 +220,7 @@ def main():
     
     width = shutil.get_terminal_size().columns  # Get current terminal width
     print(f"\n{COLORS['highlight']}{'─' * width}")
-    print(f"{COLORS['info']}{SYMBOLS['success']} Search completed. Thank you for using the OSINT Search Tool!")
+    print(f"{COLORS['info']}{SYMBOLS['success']} Search completed. Thank you for using FIND WHAT - OSINT Tool!")
     print(f"{COLORS['highlight']}{'─' * width}\n")
 
 if __name__ == "__main__":
