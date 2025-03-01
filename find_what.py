@@ -4,10 +4,12 @@ import os
 import webbrowser
 import time
 import shutil
+import re
 from googlesearch import search
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 from colorama import init, Fore, Back, Style
+from datetime import datetime
 
 # Initialize colorama
 init(autoreset=True)
@@ -153,13 +155,39 @@ def print_result(idx, page_info):
     # Display a dynamic border at the end of the result
     print(f"{COLORS['highlight']}{'─' * width}")
 
-def save_results(results, filename="search_results.txt"):
+def generate_filename(query):
+    """Generate a filename based on the user's search query."""
+    # Clean the query to make it suitable for a filename
+    # Remove special characters that aren't suitable for filenames
+    safe_query = re.sub(r'[^\w\s-]', '', query).strip().lower()
+    # Replace spaces with underscores
+    safe_query = re.sub(r'[-\s]+', '_', safe_query)
+    
+    # Add timestamp for uniqueness
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Limit filename length (some filesystems have limitations)
+    if len(safe_query) > 50:
+        safe_query = safe_query[:50]
+    
+    return f"{safe_query}_{timestamp}.txt"
+
+def save_results(results, query):
     """Save search results to a file with a progress display."""
+    filename = generate_filename(query)
     loading_animation(f"Saving {len(results)} results to {filename}", 1)
     
     with open(filename, "w", encoding="utf-8") as f:
-        for result in results:
-            f.write(f"{result['title']} - {result['url']}\n{result['description']}\n{'-'*80}\n")
+        f.write(f"Search Query: {query}\n")
+        f.write(f"Search Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Results Count: {len(results)}\n")
+        f.write(f"{'-'*80}\n\n")
+        
+        for idx, result in enumerate(results, 1):
+            f.write(f"Result #{idx}: {result['title']}\n")
+            f.write(f"URL: {result['url']}\n")
+            f.write(f"Description: {result['description']}\n")
+            f.write(f"{'-'*80}\n\n")
     
     print(f"{COLORS['info']}{SYMBOLS['save']} Search results saved to {COLORS['highlight']}{filename}")
 
@@ -199,7 +227,7 @@ def main():
     # Save results if requested
     if args.save:
         print_section("SAVING RESULTS")
-        save_results(scraped_results)
+        save_results(scraped_results, args.query)
     
     # Interactive mode
     if args.interactive:
