@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 from colorama import init, Fore, Back, Style
 from datetime import datetime
+from urllib.parse import quote_plus
 
 # Initialize colorama
 init(autoreset=True)
@@ -72,8 +73,11 @@ def loading_animation(text, duration=1.5):
             time.sleep(0.1)
     print()
 
-def google_search(query, num_results=10, auto_open=False):
-    """Perform a Google search and retrieve results, with an option to open results automatically."""
+def google_search(query, num_results=10, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False):
+    """Perform a Google search and retrieve results, with an option to open results automatically.
+
+    Adds timeout and simple retry with exponential backoff to reduce transient failures.
+    """
     try:
         print(f"\n{COLORS['info']}{SYMBOLS['search']} Searching: \"{COLORS['highlight']}{query}{COLORS['info']}\"")
         
@@ -81,20 +85,90 @@ def google_search(query, num_results=10, auto_open=False):
         with tqdm(total=num_results, desc=f"{COLORS['info']}Collecting results", 
                   bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}", 
                   colour="green") as pbar:
-            for url in search(query, num_results=num_results, lang="en"):
-                results.append(url)
-                # If auto_open is enabled, open the website as soon as it's found
-                if auto_open:
-                    print(f"\n{COLORS['info']}{SYMBOLS['open']} Opening: {COLORS['url']}{url}")
-                    webbrowser.open(url)
-                    # Short delay to prevent overwhelming the browser
-                    time.sleep(1.5)
-                pbar.update(1)
+            attempt = 0
+            while attempt < retries and len(results) < num_results:
+                try:
+                    ssl_verify = False if insecure else None
+                    for url in search(query, num_results=num_results, lang="en", timeout=timeout, ssl_verify=ssl_verify):
+                        results.append(url)
+                        if auto_open:
+                            print(f"\n{COLORS['info']}{SYMBOLS['open']} Opening: {COLORS['url']}{url}")
+                            webbrowser.open(url)
+                            time.sleep(1.0)
+                        pbar.update(1)
+                        if len(results) >= num_results:
+                            break
+                    break
+                except Exception as e:
+                    attempt += 1
+                    if attempt >= retries:
+                        raise e
+                    wait_s = backoff ** attempt
+                    print(f"{COLORS['warning']}{SYMBOLS['warning']} Search failed (attempt {attempt}/{retries}). Retrying in {wait_s:.1f}s...")
+                    time.sleep(wait_s)
         
         print(f"{COLORS['info']}{SYMBOLS['success']} Found {COLORS['highlight']}{len(results)}{COLORS['info']} search results")
         return results
     except Exception as e:
         print(f"{COLORS['error']}{SYMBOLS['error']} Failed to perform search: {e}")
+        return []
+
+def ddg_search(query, num_results=10, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False):
+    """Perform a DuckDuckGo search by scraping the HTML results page.
+
+    Uses the lightweight HTML endpoint which is more stable for scraping.
+    """
+    try:
+        print(f"\n{COLORS['info']}{SYMBOLS['search']} Searching (DuckDuckGo): \"{COLORS['highlight']}{query}{COLORS['info']}\"")
+        results = []
+        with tqdm(total=num_results, desc=f"{COLORS['info']}Collecting results", 
+                  bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}", 
+                  colour="green") as pbar:
+            attempt = 0
+            while attempt < retries and len(results) < num_results:
+                try:
+                    q = quote_plus(query)
+                    # Use HTML endpoint subdomain with proper certificate
+                    url = f"https://html.duckduckgo.com/html/?q={q}&kl=en-us"
+                    headers = {"User-Agent": "Mozilla/5.0"}
+                    resp = requests.get(url, headers=headers, timeout=timeout, verify=(False if insecure else True))
+                    resp.raise_for_status()
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    links = []
+                    # Primary selector for DDG HTML
+                    for a in soup.select('a.result__a'):
+                        href = a.get('href')
+                        if href:
+                            links.append(href)
+                    # Fallback selectors (in case of class changes)
+                    if not links:
+                        for a in soup.select('a[href]'):
+                            href = a.get('href')
+                            if href and '/y.js' not in href and 'duckduckgo.com' not in href:
+                                links.append(href)
+                    for link in links:
+                        if link.startswith('/') or link.startswith('https://duckduckgo.com'):
+                            continue
+                        results.append(link)
+                        if auto_open:
+                            print(f"\n{COLORS['info']}{SYMBOLS['open']} Opening: {COLORS['url']}{link}")
+                            webbrowser.open(link)
+                            time.sleep(1.0)
+                        pbar.update(1)
+                        if len(results) >= num_results:
+                            break
+                    break
+                except Exception as e:
+                    attempt += 1
+                    if attempt >= retries:
+                        raise e
+                    wait_s = backoff ** attempt
+                    print(f"{COLORS['warning']}{SYMBOLS['warning']} DDG search failed (attempt {attempt}/{retries}). Retrying in {wait_s:.1f}s...")
+                    time.sleep(wait_s)
+        print(f"{COLORS['info']}{SYMBOLS['success']} Found {COLORS['highlight']}{len(results)}{COLORS['info']} search results (DuckDuckGo)")
+        return results[:num_results]
+    except Exception as e:
+        print(f"{COLORS['error']}{SYMBOLS['error']} Failed to perform DuckDuckGo search: {e}")
         return []
 
 def scrape_page(url, idx):
@@ -199,6 +273,10 @@ def main():
     parser.add_argument("--auto-open", action="store_true", help="Automatically open all results in the browser as they appear")
     parser.add_argument("--save", action="store_true", help="Save search results to a file")
     parser.add_argument("--interactive", action="store_true", help="Interactive mode to choose which links to open")
+    parser.add_argument("--timeout", type=int, default=15, help="HTTP timeout for search requests (seconds)")
+    parser.add_argument("--retries", type=int, default=3, help="Number of retries on search failure")
+    parser.add_argument("--provider", type=str, choices=["auto", "google", "ddg"], default="auto", help="Search provider: auto, google, or ddg")
+    parser.add_argument("--insecure", action="store_true", help="Disable SSL verification for search requests (not recommended)")
     args = parser.parse_args()
     
     # Display the banner
@@ -206,7 +284,12 @@ def main():
     
     # Perform the search
     print_section("Dive into the Internet")
-    results = google_search(args.query, args.num, args.auto_open)
+    results = []
+    if args.provider in ("auto", "google"):
+        results = google_search(args.query, args.num, args.auto_open, timeout=args.timeout, retries=args.retries, insecure=args.insecure)
+    if (not results) and args.provider in ("auto", "ddg"):
+        # Fallback to DDG when auto or explicitly use DDG
+        results = ddg_search(args.query, args.num, args.auto_open, timeout=args.timeout, retries=args.retries, insecure=args.insecure)
     
     if not results:
         print(f"{COLORS['error']}{SYMBOLS['error']} No results found.")

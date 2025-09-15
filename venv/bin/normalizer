@@ -1,4 +1,4 @@
-#!/home/dexter/my-project/python-project/find-what/venv/bin/python3
+#!/Users/bagaspra16/Documents/my-project/find-what/venv/bin/python3.13
 # -*- coding: utf-8 -*-
 import re
 import sys

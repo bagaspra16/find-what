@@ -1,72 +1,114 @@
-# FIND WHAT - OSINT TOOL
+## FIND WHAT - OSINT TOOL
 
-## Description
-FIND WHAT is an OSINT (Open Source Intelligence) search tool designed for investigation and information gathering. This tool utilizes Google search to find relevant web pages, extracts metadata, and provides interactive options for users to analyze the search results efficiently.
+### Deskripsi
+FIND WHAT adalah alat OSINT (Open Source Intelligence) untuk pencarian, pengumpulan, dan penyajian informasi dari web. Mendukung beberapa penyedia pencarian, menyimpan hasil ke file, mode interaktif, serta pengaturan lanjutan seperti timeout, retries, dan fallback otomatis.
 
-## Features 🚀
-- ✅ Advanced Google Search – Perform Google searches with a specified number of results 📊
-- ✅ Auto-Open Links – Automatically open search results in the browser 🌍
-- ✅ Metadata Extraction – Extract titles and descriptions from web pages 🔍
-- ✅ Save Search Results – Store results in a text file for later analysis 📝
-- ✅ Interactive Mode – Choose which links to open with an easy-to-use interface 🎯
-- ✅ Formatted Output – Display results with colors and icons for better readability 🎨
+### Fitur 🚀
+- **Pencarian multi-provider**: Google dan DuckDuckGo (fallback otomatis)
+- **Retry + backoff**: Lebih tangguh terhadap gangguan jaringan/limitasi
+- **Auto-open**: Otomatis buka hasil di browser
+- **Ekstraksi ringkas**: Ambil title dan deskripsi halaman
+- **Simpan ke file**: Hasil diserialisasi rapi ke `.txt`
+- **Mode interaktif**: Pilih hasil yang ingin dibuka
+- **Output kaya warna**: Lebih mudah dibaca di terminal
 
-## Requirements
-Before running the script, ensure you have the following dependencies installed:
-
-- Python 3.x
-- Required Python libraries:
+### Prasyarat
+- Python 3.9+ (disarankan Python 3.13 sesuai venv contoh)
+- Pustaka Python:
   ```bash
   pip install argparse requests googlesearch-python beautifulsoup4 tqdm colorama
   ```
 
-## Installation
-1. Clone the repository or download the script:
-   ```bash
-   git clone https://github.com/bagaspra16/find-what.git
-   ```
-
-## Usage
-Run the script using the following command:
+### Instalasi
 ```bash
-python find_what.py "search query"
+git clone https://github.com/bagaspra16/find-what.git
+cd find-what
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r <(printf "requests\ngooglesearch-python\nbeautifulsoup4\ntqdm\ncolorama\nargparse\n")
 ```
 
-### Available Options
-- `--num <number>` : Specify the number of search results (default: 10)
-- `--auto-open` : Automatically open all search results in the web browser
-- `--save` : Save the search results to a file
-- `--interactive` : Enable interactive mode to choose which links to open
+## Penggunaan Dasar
+```bash
+python find_what.py "kata kunci"
+```
 
-### Example Commands
-1. Perform a simple Google search:
-   ```bash
-   python find_what.py "open source intelligence tools"
-   ```
-2. Search for 20 results and open them automatically:
-   ```bash
-   python find_what.py "latest cybersecurity trends" --num 20 --auto-open
-   ```
-3. Save search results to a file:
-   ```bash
-   python find_what.py "best OSINT techniques" --save
-   ```
-4. Run the tool in interactive mode:
-   ```bash
-   python find_what.py "deep web search" --interactive
-   ```
+## Opsi CLI Lengkap
+- **--num <int>**: Jumlah hasil pencarian. Default: 10
+- **--auto-open**: Otomatis buka setiap URL yang ditemukan
+- **--save**: Simpan hasil ke file `.txt` bernama `<query>_YYYYMMDD_HHMMSS.txt`
+- **--interactive**: Mode interaktif untuk memilih hasil yang ingin dibuka
+- **--timeout <int>**: Timeout HTTP (detik) saat melakukan pencarian. Default: 15
+- **--retries <int>**: Jumlah percobaan ulang saat gagal. Default: 3
+- **--provider <auto|google|ddg>**: Pilih penyedia pencarian. Default: `auto`
+  - `auto`: coba Google dulu, jika kosong/gagal jatuh ke DuckDuckGo
+  - `google`: paksa gunakan Google
+  - `ddg`: paksa gunakan DuckDuckGo HTML
+- **--insecure**: Nonaktifkan verifikasi SSL pada request pencarian (tidak direkomendasikan; gunakan hanya bila lingkungan jaringan memaksa inspeksi SSL)
 
-## Interactive Mode
-When running the script with the `--interactive` flag, you will be prompted to choose which search result to open. Simply enter the result number to open the corresponding link in your browser.
+## Contoh Penggunaan Lanjutan
 
-## Saving Search Results
-If the `--save` flag is used, the search results will be saved in `search_results.txt` in the current working directory.
+### 1) Pencarian cepat dengan batas hasil dan simpan
+```bash
+python find_what.py "osint framework" --num 20 --save
+```
 
-## Notes
-- This tool depends on `googlesearch-python`, which may have API limitations depending on usage.
-- Ensure your Python environment has internet access to perform searches and fetch web pages.
-- Avoid excessive automated searches to prevent getting temporarily blocked by Google.
+### 2) Auto-open hasil + fallback otomatis
+```bash
+python find_what.py "latest cybersecurity trends" --num 5 --auto-open --provider auto
+```
+
+### 3) Mode interaktif untuk memilih tautan
+```bash
+python find_what.py "deep web search techniques" --interactive
+```
+
+### 4) Atur ketahanan jaringan: timeout dan retries
+```bash
+python find_what.py "threat intel feeds" --timeout 30 --retries 4
+```
+
+### 5) Paksa gunakan DuckDuckGo (mis. jika Google 429/blocked)
+```bash
+python find_what.py "osint email enumeration" --provider ddg --num 10
+```
+
+### 6) Jaringan ketat/SSL inspeksi (hindari bila tidak perlu)
+```bash
+python find_what.py "bug bounty recon" --provider ddg --insecure --timeout 20 --retries 2
+```
+
+## Perilaku Fallback dan Ketahanan
+- **Provider auto**: mencoba Google terlebih dahulu. Jika gagal/hasil kosong, otomatis beralih ke DuckDuckGo.
+- **Retry + backoff**: kegagalan akan dicoba ulang dengan jeda meningkat secara eksponensial.
+- **Timeout**: cegah hang saat jaringan lambat atau server tidak responsif.
+
+## Output dan Penyimpanan Hasil
+- Hasil ditampilkan dengan nomor, judul, URL, dan deskripsi ringkas.
+- Opsi `--save` akan menyimpan ke berkas: `<query_sanitized>_YYYYMMDD_HHMMSS.txt` pada direktori kerja saat ini.
+
+## Tips Praktik Baik
+- **Kurangi frekuensi** pencarian massal untuk menghindari limitasi sementara (mis. 429 dari Google).
+- Gunakan **--provider ddg** saat Google menolak permintaan.
+- Atur **--timeout** lebih besar di jaringan lambat dan naikkan **--retries** saat koneksi tidak stabil.
+- Hindari **--insecure** kecuali benar-benar diperlukan oleh lingkungan jaringan (berisiko keamanan).
+
+## Troubleshooting
+- **429 Too Many Requests (Google)**:
+  - Jalankan ulang dengan `--provider ddg`
+  - Kurangi `--num`, tambah `--timeout`, naikkan `--retries`
+- **SSL: CERTIFICATE_VERIFY_FAILED**:
+  - Coba `--provider ddg` (endpoint: `https://html.duckduckgo.com/html/`)
+  - Jika jaringan melakukan SSL inspection, gunakan `--insecure` (dengan risiko keamanan)
+- **Hasil kosong**:
+  - Ubah kata kunci (lebih spesifik), atau tambah `--num`
+  - Gunakan `--provider ddg` jika Google memfilter/blokir
+- **Browser terbuka terlalu banyak tab**:
+  - Hilangkan `--auto-open` atau kurangi `--num`
+
+## Catatan
+- Bergantung pada perubahan antarmuka mesin pencari, scraping bisa terdampak. Gunakan fallback `--provider ddg` bila perlu.
+- Hormati ketentuan layanan situs yang diakses. Hindari beban berlebih.
 
 ## Author
-Created by bagaspra16 - Contact: bagaspratamajunianika72@gmail.com
-
+Dibuat oleh bagaspra16 — kontak: bagaspratamajunianika72@gmail.com
