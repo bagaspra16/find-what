@@ -5,12 +5,11 @@ import webbrowser
 import time
 import shutil
 import re
-from googlesearch import search
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 from colorama import init, Fore, Back, Style
 from datetime import datetime
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse, parse_qs
 
 # Initialize colorama
 init(autoreset=True)
@@ -73,47 +72,181 @@ def loading_animation(text, duration=1.5):
             time.sleep(0.1)
     print()
 
-def google_search(query, num_results=10, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False):
-    """Perform a Google search and retrieve results, with an option to open results automatically.
+def _build_session(user_agent_profile="chrome", proxy_url=None, insecure=False, timeout=15):
+    """Build a configured requests Session with UA, optional proxy, and SSL options."""
+    session = requests.Session()
+    user_agents = {
+        "chrome": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "firefox": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0",
+        "safari": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
+    }
+    ua = user_agents.get(user_agent_profile, user_agents["chrome"])
+    session.headers.update({
+        "User-Agent": ua,
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    })
+    if proxy_url:
+        session.proxies.update({
+            "http": proxy_url,
+            "https": proxy_url,
+        })
+    # Attach settings
+    session.verify = False if insecure else True
+    session.request = _wrap_with_timeout(session.request, timeout)
+    return session
 
-    Adds timeout and simple retry with exponential backoff to reduce transient failures.
-    """
+def _wrap_with_timeout(request_fn, timeout):
+    def wrapped(method, url, **kwargs):
+        if "timeout" not in kwargs:
+            kwargs["timeout"] = timeout
+        return request_fn(method, url, **kwargs)
+    return wrapped
+
+def _google_extract_links(html):
+    soup = BeautifulSoup(html, 'html.parser')
+    links = []
+    # Google SERP links often in a[href^="/url?q="]
+    for a in soup.select('a[href^="/url?q="]'):
+        href = a.get('href')
+        try:
+            # Format: /url?q=https://target&sa=...
+            parsed = urlparse(href)
+            qs = parse_qs(parsed.query)
+            target = qs.get('q', [None])[0]
+            if target and not target.startswith('https://www.google.'):
+                links.append(target)
+        except Exception:
+            continue
+    # Fallback: result block h3 > a
+    if not links:
+        for a in soup.select('div.yuRUbf > a[href], h3 ~ a[href]'):
+            href = a.get('href')
+            if href and href.startswith('http'):
+                links.append(href)
+    return links
+
+def google_search(query, num_results=10, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False, user_agent_profile="chrome", proxy_url=None):
+    """Scrape Google SERP and return external result links."""
     try:
-        print(f"\n{COLORS['info']}{SYMBOLS['search']} Searching: \"{COLORS['highlight']}{query}{COLORS['info']}\"")
-        
+        print(f"\n{COLORS['info']}{SYMBOLS['search']} Searching (Google): \"{COLORS['highlight']}{query}{COLORS['info']}\"")
+        session = _build_session(user_agent_profile=user_agent_profile, proxy_url=proxy_url, insecure=insecure, timeout=timeout)
         results = []
-        with tqdm(total=num_results, desc=f"{COLORS['info']}Collecting results", 
-                  bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}", 
-                  colour="green") as pbar:
+        with tqdm(total=num_results, desc=f"{COLORS['info']}Collecting results", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}", colour="green") as pbar:
             attempt = 0
             while attempt < retries and len(results) < num_results:
                 try:
-                    ssl_verify = False if insecure else None
-                    for url in search(query, num_results=num_results, lang="en", timeout=timeout, ssl_verify=ssl_verify):
-                        results.append(url)
-                        if auto_open:
-                            print(f"\n{COLORS['info']}{SYMBOLS['open']} Opening: {COLORS['url']}{url}")
-                            webbrowser.open(url)
-                            time.sleep(1.0)
-                        pbar.update(1)
-                        if len(results) >= num_results:
-                            break
+                    q = quote_plus(query)
+                    url = f"https://www.google.com/search?q={q}&num={min(50, num_results)}&hl=en"
+                    resp = session.get(url)
+                    resp.raise_for_status()
+                    links = _google_extract_links(resp.text)
+                    for link in links:
+                        if link and link.startswith("http"):
+                            results.append(link)
+                            if auto_open:
+                                print(f"\n{COLORS['info']}{SYMBOLS['open']} Opening: {COLORS['url']}{link}")
+                                webbrowser.open(link)
+                                time.sleep(1.0)
+                            pbar.update(1)
+                            if len(results) >= num_results:
+                                break
                     break
                 except Exception as e:
                     attempt += 1
                     if attempt >= retries:
                         raise e
                     wait_s = backoff ** attempt
-                    print(f"{COLORS['warning']}{SYMBOLS['warning']} Search failed (attempt {attempt}/{retries}). Retrying in {wait_s:.1f}s...")
+                    print(f"{COLORS['warning']}{SYMBOLS['warning']} Google failed (attempt {attempt}/{retries}). Retrying in {wait_s:.1f}s...")
                     time.sleep(wait_s)
-        
-        print(f"{COLORS['info']}{SYMBOLS['success']} Found {COLORS['highlight']}{len(results)}{COLORS['info']} search results")
-        return results
+        print(f"{COLORS['info']}{SYMBOLS['success']} Found {COLORS['highlight']}{len(results)}{COLORS['info']} results (Google)")
+        return results[:num_results]
     except Exception as e:
-        print(f"{COLORS['error']}{SYMBOLS['error']} Failed to perform search: {e}")
+        print(f"{COLORS['error']}{SYMBOLS['error']} Failed to perform Google search: {e}")
         return []
 
-def ddg_search(query, num_results=10, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False):
+def bing_search(query, num_results=10, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False, user_agent_profile="chrome", proxy_url=None):
+    """Scrape Bing SERP and return result links."""
+    try:
+        print(f"\n{COLORS['info']}{SYMBOLS['search']} Searching (Bing): \"{COLORS['highlight']}{query}{COLORS['info']}\"")
+        session = _build_session(user_agent_profile=user_agent_profile, proxy_url=proxy_url, insecure=insecure, timeout=timeout)
+        results = []
+        with tqdm(total=num_results, desc=f"{COLORS['info']}Collecting results", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}", colour="green") as pbar:
+            attempt = 0
+            while attempt < retries and len(results) < num_results:
+                try:
+                    q = quote_plus(query)
+                    url = f"https://www.bing.com/search?q={q}&count={min(50, num_results)}&setlang=en"
+                    resp = session.get(url)
+                    resp.raise_for_status()
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    for a in soup.select('li.b_algo h2 a[href], h2 a[href]'):
+                        href = a.get('href')
+                        if href and href.startswith('http'):
+                            results.append(href)
+                            if auto_open:
+                                print(f"\n{COLORS['info']}{SYMBOLS['open']} Opening: {COLORS['url']}{href}")
+                                webbrowser.open(href)
+                                time.sleep(1.0)
+                            pbar.update(1)
+                            if len(results) >= num_results:
+                                break
+                    break
+                except Exception as e:
+                    attempt += 1
+                    if attempt >= retries:
+                        raise e
+                    wait_s = backoff ** attempt
+                    print(f"{COLORS['warning']}{SYMBOLS['warning']} Bing failed (attempt {attempt}/{retries}). Retrying in {wait_s:.1f}s...")
+                    time.sleep(wait_s)
+        print(f"{COLORS['info']}{SYMBOLS['success']} Found {COLORS['highlight']}{len(results)}{COLORS['info']} results (Bing)")
+        return results[:num_results]
+    except Exception as e:
+        print(f"{COLORS['error']}{SYMBOLS['error']} Failed to perform Bing search: {e}")
+        return []
+
+def startpage_search(query, num_results=10, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False, user_agent_profile="safari", proxy_url=None):
+    """Scrape Startpage (Google proxy) to emulate Mozilla/Safari friendly results."""
+    try:
+        print(f"\n{COLORS['info']}{SYMBOLS['search']} Searching (Startpage): \"{COLORS['highlight']}{query}{COLORS['info']}\"")
+        session = _build_session(user_agent_profile=user_agent_profile, proxy_url=proxy_url, insecure=insecure, timeout=timeout)
+        results = []
+        with tqdm(total=num_results, desc=f"{COLORS['info']}Collecting results", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}", colour="green") as pbar:
+            attempt = 0
+            while attempt < retries and len(results) < num_results:
+                try:
+                    q = quote_plus(query)
+                    url = f"https://www.startpage.com/sp/search?query={q}&hl=en"
+                    resp = session.get(url)
+                    resp.raise_for_status()
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    # New UI selector
+                    for a in soup.select('a[data-testid="result-title-a"], a.result-link'):
+                        href = a.get('href')
+                        if href and href.startswith('http'):
+                            results.append(href)
+                            if auto_open:
+                                print(f"\n{COLORS['info']}{SYMBOLS['open']} Opening: {COLORS['url']}{href}")
+                                webbrowser.open(href)
+                                time.sleep(1.0)
+                            pbar.update(1)
+                            if len(results) >= num_results:
+                                break
+                    break
+                except Exception as e:
+                    attempt += 1
+                    if attempt >= retries:
+                        raise e
+                    wait_s = backoff ** attempt
+                    print(f"{COLORS['warning']}{SYMBOLS['warning']} Startpage failed (attempt {attempt}/{retries}). Retrying in {wait_s:.1f}s...")
+                    time.sleep(wait_s)
+        print(f"{COLORS['info']}{SYMBOLS['success']} Found {COLORS['highlight']}{len(results)}{COLORS['info']} results (Startpage)")
+        return results[:num_results]
+    except Exception as e:
+        print(f"{COLORS['error']}{SYMBOLS['error']} Failed to perform Startpage search: {e}")
+        return []
+
+def ddg_search(query, num_results=10, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False, user_agent_profile="firefox", proxy_url=None):
     """Perform a DuckDuckGo search by scraping the HTML results page.
 
     Uses the lightweight HTML endpoint which is more stable for scraping.
@@ -128,10 +261,9 @@ def ddg_search(query, num_results=10, auto_open=False, timeout=15, retries=3, ba
             while attempt < retries and len(results) < num_results:
                 try:
                     q = quote_plus(query)
-                    # Use HTML endpoint subdomain with proper certificate
                     url = f"https://html.duckduckgo.com/html/?q={q}&kl=en-us"
-                    headers = {"User-Agent": "Mozilla/5.0"}
-                    resp = requests.get(url, headers=headers, timeout=timeout, verify=(False if insecure else True))
+                    session = _build_session(user_agent_profile=user_agent_profile, proxy_url=proxy_url, insecure=insecure, timeout=timeout)
+                    resp = session.get(url)
                     resp.raise_for_status()
                     soup = BeautifulSoup(resp.text, 'html.parser')
                     links = []
@@ -170,6 +302,52 @@ def ddg_search(query, num_results=10, auto_open=False, timeout=15, retries=3, ba
     except Exception as e:
         print(f"{COLORS['error']}{SYMBOLS['error']} Failed to perform DuckDuckGo search: {e}")
         return []
+
+def aggregate_search(query, num_results, engines_order, auto_open=False, timeout=15, retries=3, backoff=1.5, insecure=False, user_agent_profile="chrome", proxy_url=None):
+    """Aggregate results from multiple engines in order until target count reached."""
+    aggregated = []
+    seen = set()
+    def add_links(links):
+        for link in links:
+            if not link:
+                continue
+            # Normalize by netloc + path
+            try:
+                p = urlparse(link)
+                key = f"{p.scheme}://{p.netloc}{p.path}"
+            except Exception:
+                key = link
+            if key in seen:
+                continue
+            seen.add(key)
+            aggregated.append(link)
+            if len(aggregated) >= num_results:
+                return True
+        return False
+
+    for engine in engines_order:
+        if len(aggregated) >= num_results:
+            break
+        if engine == "google":
+            links = google_search(query, num_results=num_results, auto_open=False, timeout=timeout, retries=retries, backoff=backoff, insecure=insecure, user_agent_profile=user_agent_profile, proxy_url=proxy_url)
+        elif engine == "bing":
+            links = bing_search(query, num_results=num_results, auto_open=False, timeout=timeout, retries=retries, backoff=backoff, insecure=insecure, user_agent_profile=user_agent_profile, proxy_url=proxy_url)
+        elif engine in ("mozilla", "safari", "startpage"):
+            links = startpage_search(query, num_results=num_results, auto_open=False, timeout=timeout, retries=retries, backoff=backoff, insecure=insecure, user_agent_profile=user_agent_profile, proxy_url=proxy_url)
+        elif engine == "ddg":
+            links = ddg_search(query, num_results=num_results, auto_open=False, timeout=timeout, retries=retries, backoff=backoff, insecure=insecure, user_agent_profile=user_agent_profile, proxy_url=proxy_url)
+        else:
+            links = []
+        if add_links(links):
+            break
+
+    # Auto-open if requested
+    if auto_open:
+        for url in aggregated:
+            print(f"\n{COLORS['info']}{SYMBOLS['open']} Opening: {COLORS['url']}{url}")
+            webbrowser.open(url)
+            time.sleep(1.0)
+    return aggregated[:num_results]
 
 def scrape_page(url, idx):
     """Scrape a web page to retrieve its title and description."""
@@ -275,8 +453,10 @@ def main():
     parser.add_argument("--interactive", action="store_true", help="Interactive mode to choose which links to open")
     parser.add_argument("--timeout", type=int, default=15, help="HTTP timeout for search requests (seconds)")
     parser.add_argument("--retries", type=int, default=3, help="Number of retries on search failure")
-    parser.add_argument("--provider", type=str, choices=["auto", "google", "ddg"], default="auto", help="Search provider: auto, google, or ddg")
+    parser.add_argument("--provider", type=str, choices=["auto", "google", "bing", "startpage", "ddg", "multi"], default="auto", help="Search provider: auto, google, bing, startpage, ddg, or multi")
     parser.add_argument("--insecure", action="store_true", help="Disable SSL verification for search requests (not recommended)")
+    parser.add_argument("--proxy", type=str, default=None, help="HTTP(S) proxy URL (e.g., http://127.0.0.1:8080). Can be used for CroxyProxy")
+    parser.add_argument("--ua", type=str, choices=["auto", "chrome", "firefox", "safari"], default="auto", help="User-Agent profile to use")
     args = parser.parse_args()
     
     # Display the banner
@@ -285,11 +465,25 @@ def main():
     # Perform the search
     print_section("Dive into the Internet")
     results = []
-    if args.provider in ("auto", "google"):
-        results = google_search(args.query, args.num, args.auto_open, timeout=args.timeout, retries=args.retries, insecure=args.insecure)
-    if (not results) and args.provider in ("auto", "ddg"):
-        # Fallback to DDG when auto or explicitly use DDG
-        results = ddg_search(args.query, args.num, args.auto_open, timeout=args.timeout, retries=args.retries, insecure=args.insecure)
+    ua_profile = {
+        "auto": "chrome",
+        "chrome": "chrome",
+        "firefox": "firefox",
+        "safari": "safari",
+    }[args.ua]
+
+    if args.provider == "google":
+        results = google_search(args.query, args.num, args.auto_open, timeout=args.timeout, retries=args.retries, insecure=args.insecure, user_agent_profile=ua_profile, proxy_url=args.proxy)
+    elif args.provider == "bing":
+        results = bing_search(args.query, args.num, args.auto_open, timeout=args.timeout, retries=args.retries, insecure=args.insecure, user_agent_profile=ua_profile, proxy_url=args.proxy)
+    elif args.provider in ("startpage", "mozilla", "safari"):
+        results = startpage_search(args.query, args.num, args.auto_open, timeout=args.timeout, retries=args.retries, insecure=args.insecure, user_agent_profile=ua_profile, proxy_url=args.proxy)
+    elif args.provider == "ddg":
+        results = ddg_search(args.query, args.num, args.auto_open, timeout=args.timeout, retries=args.retries, insecure=args.insecure, user_agent_profile=ua_profile, proxy_url=args.proxy)
+    elif args.provider in ("auto", "multi"):
+        # Ordered engines: Google -> Bing -> Startpage (Mozilla/Safari) -> DDG
+        order = ["google", "bing", "startpage", "ddg"]
+        results = aggregate_search(args.query, args.num, order, auto_open=args.auto_open, timeout=args.timeout, retries=args.retries, backoff=1.5, insecure=args.insecure, user_agent_profile=ua_profile, proxy_url=args.proxy)
     
     if not results:
         print(f"{COLORS['error']}{SYMBOLS['error']} No results found.")

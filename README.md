@@ -1,114 +1,133 @@
 ## FIND WHAT - OSINT TOOL
 
-### Deskripsi
-FIND WHAT adalah alat OSINT (Open Source Intelligence) untuk pencarian, pengumpulan, dan penyajian informasi dari web. Mendukung beberapa penyedia pencarian, menyimpan hasil ke file, mode interaktif, serta pengaturan lanjutan seperti timeout, retries, dan fallback otomatis.
+### Description
+FIND WHAT is an OSINT (Open Source Intelligence) tool for searching, collecting, and presenting information from the web. It now supports multi-engine search (Google → Bing → Startpage → DuckDuckGo), a results aggregator with de-duplication, optional proxy (including CroxyProxy), custom User-Agent profiles, and robust retry/backoff.
 
-### Fitur 🚀
-- **Pencarian multi-provider**: Google dan DuckDuckGo (fallback otomatis)
-- **Retry + backoff**: Lebih tangguh terhadap gangguan jaringan/limitasi
-- **Auto-open**: Otomatis buka hasil di browser
-- **Ekstraksi ringkas**: Ambil title dan deskripsi halaman
-- **Simpan ke file**: Hasil diserialisasi rapi ke `.txt`
-- **Mode interaktif**: Pilih hasil yang ingin dibuka
-- **Output kaya warna**: Lebih mudah dibaca di terminal
+### Features 🚀
+- **Multi-engine search**: Google, Bing, Startpage (Mozilla/Safari-friendly), DuckDuckGo
+- **Aggregator with de-duplication**: Fills up to `--num` results across engines
+- **Proxy support**: Use `--proxy` (works with CroxyProxy or any HTTP(S) proxy)
+- **User-Agent profiles**: `chrome`, `firefox`, `safari` via `--ua`
+- **Retry + backoff**: More resilient to rate limits/network hiccups
+- **Auto-open**: Automatically open results in the browser
+- **Light webpage extraction**: Title + short description
+- **Save to file**: Nicely formatted `.txt`
+- **Interactive mode**: Pick which links to open
+- **Colored output**: Easier to read in terminal
 
-### Prasyarat
-- Python 3.9+ (disarankan Python 3.13 sesuai venv contoh)
-- Pustaka Python:
+### Requirements
+- Python 3.9+ (Python 3.13 recommended like the example venv)
+- Python packages:
   ```bash
-  pip install argparse requests googlesearch-python beautifulsoup4 tqdm colorama
+  pip install argparse requests beautifulsoup4 tqdm colorama
   ```
 
-### Instalasi
+### Installation
 ```bash
 git clone https://github.com/bagaspra16/find-what.git
 cd find-what
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r <(printf "requests\ngooglesearch-python\nbeautifulsoup4\ntqdm\ncolorama\nargparse\n")
+pip install -r <(printf "requests\nbeautifulsoup4\ntqdm\ncolorama\nargparse\n")
 ```
 
-## Penggunaan Dasar
+## Basic Usage
 ```bash
-python find_what.py "kata kunci"
+python find_what.py "your keywords"
 ```
 
-## Opsi CLI Lengkap
-- **--num <int>**: Jumlah hasil pencarian. Default: 10
-- **--auto-open**: Otomatis buka setiap URL yang ditemukan
-- **--save**: Simpan hasil ke file `.txt` bernama `<query>_YYYYMMDD_HHMMSS.txt`
-- **--interactive**: Mode interaktif untuk memilih hasil yang ingin dibuka
-- **--timeout <int>**: Timeout HTTP (detik) saat melakukan pencarian. Default: 15
-- **--retries <int>**: Jumlah percobaan ulang saat gagal. Default: 3
-- **--provider <auto|google|ddg>**: Pilih penyedia pencarian. Default: `auto`
-  - `auto`: coba Google dulu, jika kosong/gagal jatuh ke DuckDuckGo
-  - `google`: paksa gunakan Google
-  - `ddg`: paksa gunakan DuckDuckGo HTML
-- **--insecure**: Nonaktifkan verifikasi SSL pada request pencarian (tidak direkomendasikan; gunakan hanya bila lingkungan jaringan memaksa inspeksi SSL)
+## Full CLI Options
+- **--num <int>**: Number of results. Default: 10
+- **--auto-open**: Automatically open each found URL
+- **--save**: Save results to `.txt` named `<query>_YYYYMMDD_HHMMSS.txt`
+- **--interactive**: Interactive mode to pick links to open
+- **--timeout <int>**: HTTP timeout (seconds). Default: 15
+- **--retries <int>**: Number of retries on failure. Default: 3
+- **--provider <auto|google|bing|startpage|ddg|multi>**: Search provider. Default: `auto`
+  - `auto`/`multi`: aggregate in order Google → Bing → Startpage → DuckDuckGo
+  - `google`: force Google
+  - `bing`: force Bing
+  - `startpage`: force Startpage (good for Mozilla/Safari-like UA)
+  - `ddg`: force DuckDuckGo HTML
+- **--proxy <url>**: HTTP(S) proxy (e.g., `http://127.0.0.1:8080`). Useful for CroxyProxy
+- **--ua <auto|chrome|firefox|safari>**: User-Agent profile to use. Default: `auto` (= `chrome`)
+- **--insecure**: Disable SSL verification for search requests (not recommended; only for SSL inspection environments)
 
-## Contoh Penggunaan Lanjutan
+## Advanced Examples
 
-### 1) Pencarian cepat dengan batas hasil dan simpan
+### 1) Multi-engine search with save
 ```bash
-python find_what.py "osint framework" --num 20 --save
+python find_what.py "osint framework" --num 20 --save --provider multi
 ```
 
-### 2) Auto-open hasil + fallback otomatis
+### 2) Auto-open with aggregator
 ```bash
-python find_what.py "latest cybersecurity trends" --num 5 --auto-open --provider auto
+python find_what.py "latest cybersecurity trends" --num 5 --auto-open --provider multi
 ```
 
-### 3) Mode interaktif untuk memilih tautan
+### 3) Interactive mode
 ```bash
 python find_what.py "deep web search techniques" --interactive
 ```
 
-### 4) Atur ketahanan jaringan: timeout dan retries
+### 4) Tune network resilience: timeout + retries
 ```bash
 python find_what.py "threat intel feeds" --timeout 30 --retries 4
 ```
 
-### 5) Paksa gunakan DuckDuckGo (mis. jika Google 429/blocked)
+### 5) Force a specific engine
 ```bash
 python find_what.py "osint email enumeration" --provider ddg --num 10
+python find_what.py "breach news" --provider bing --num 10
+python find_what.py "advanced recon" --provider startpage --num 10 --ua safari
 ```
 
-### 6) Jaringan ketat/SSL inspeksi (hindari bila tidak perlu)
+### 6) Use a proxy/CroxyProxy
 ```bash
-python find_what.py "bug bounty recon" --provider ddg --insecure --timeout 20 --retries 2
+python find_what.py "bug bounty recon" --provider multi --proxy http://127.0.0.1:8080
 ```
 
-## Perilaku Fallback dan Ketahanan
-- **Provider auto**: mencoba Google terlebih dahulu. Jika gagal/hasil kosong, otomatis beralih ke DuckDuckGo.
-- **Retry + backoff**: kegagalan akan dicoba ulang dengan jeda meningkat secara eksponensial.
-- **Timeout**: cegah hang saat jaringan lambat atau server tidak responsif.
+### 7) Change User-Agent profile
+```bash
+python find_what.py "cve-2024 poc" --ua firefox
+```
 
-## Output dan Penyimpanan Hasil
-- Hasil ditampilkan dengan nomor, judul, URL, dan deskripsi ringkas.
-- Opsi `--save` akan menyimpan ke berkas: `<query_sanitized>_YYYYMMDD_HHMMSS.txt` pada direktori kerja saat ini.
+### 8) Strict networks / SSL inspection (avoid when possible)
+```bash
+python find_what.py "supply chain compromise" --provider ddg --insecure --timeout 20 --retries 2
+```
 
-## Tips Praktik Baik
-- **Kurangi frekuensi** pencarian massal untuk menghindari limitasi sementara (mis. 429 dari Google).
-- Gunakan **--provider ddg** saat Google menolak permintaan.
-- Atur **--timeout** lebih besar di jaringan lambat dan naikkan **--retries** saat koneksi tidak stabil.
-- Hindari **--insecure** kecuali benar-benar diperlukan oleh lingkungan jaringan (berisiko keamanan).
+## Fallback and Resilience Behavior
+- **Auto/multi provider**: iterates Google → Bing → Startpage → DuckDuckGo until `--num` results collected, with de-duplication
+- **Retry + backoff**: retries failures with exponential delays
+- **Timeout**: prevents hangs on slow networks or unresponsive servers
+
+## Output and Saving
+- Results include number, title, URL, and short description
+- `--save` writes to `<query_sanitized>_YYYYMMDD_HHMMSS.txt` in the current directory
+
+## Best Practices
+- **Avoid excessive frequency** to reduce rate-limits (e.g., Google 429)
+- Try **--provider ddg** when Google denies requests
+- Increase **--timeout** on slow networks and **--retries** on unstable connections
+- Avoid **--insecure** unless your environment enforces SSL inspection
 
 ## Troubleshooting
 - **429 Too Many Requests (Google)**:
-  - Jalankan ulang dengan `--provider ddg`
-  - Kurangi `--num`, tambah `--timeout`, naikkan `--retries`
+  - Re-run with `--provider ddg` or `--provider multi`
+  - Reduce `--num`, increase `--timeout`, raise `--retries`
 - **SSL: CERTIFICATE_VERIFY_FAILED**:
-  - Coba `--provider ddg` (endpoint: `https://html.duckduckgo.com/html/`)
-  - Jika jaringan melakukan SSL inspection, gunakan `--insecure` (dengan risiko keamanan)
-- **Hasil kosong**:
-  - Ubah kata kunci (lebih spesifik), atau tambah `--num`
-  - Gunakan `--provider ddg` jika Google memfilter/blokir
-- **Browser terbuka terlalu banyak tab**:
-  - Hilangkan `--auto-open` atau kurangi `--num`
+  - Try `--provider ddg` (endpoint: `https://html.duckduckgo.com/html/`)
+  - If your network performs SSL inspection, use `--proxy` and, if necessary, `--insecure` (security risk)
+- **Empty results**:
+  - Adjust keywords (be more specific) or increase `--num`
+  - Use `--provider multi` to leverage more engines
+- **Too many tabs**:
+  - Remove `--auto-open` or reduce `--num`
 
-## Catatan
-- Bergantung pada perubahan antarmuka mesin pencari, scraping bisa terdampak. Gunakan fallback `--provider ddg` bila perlu.
-- Hormati ketentuan layanan situs yang diakses. Hindari beban berlebih.
+## Notes
+- SERP HTML may change over time; selectors include fallbacks, but scraping can break. Use `--provider multi` or switch engines if needed
+- Respect websites' terms of service. Be mindful of load
 
 ## Author
-Dibuat oleh bagaspra16 — kontak: bagaspratamajunianika72@gmail.com
+Created by bagaspra16 — contact: bagaspratamajunianika72@gmail.com
